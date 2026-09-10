@@ -1,0 +1,63 @@
+name: Update data & deploy dashboard
+
+# Jalan otomatis setiap hari jam 06:00 WIB (23:00 UTC hari sebelumnya),
+# bisa juga dipicu manual lewat tab "Actions" di GitHub ("Run workflow").
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install openpyxl
+
+      - name: Ambil data terbaru dari Google Spreadsheet
+        env:
+          SHEET_ID: ${{ vars.SHEET_ID || '15RlWr9D1QsWxqBKnzFlz0bcFhzkxxM_xLvxYjpR-SzQ' }}
+        run: python3 build_data.py
+
+      - name: Commit data/pdp-data.json jika ada perubahan
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- data/pdp-data.json; then
+            git add data/pdp-data.json
+            git commit -m "chore: update data dashboard PDP (otomatis)"
+            git push
+          else
+            echo "Tidak ada perubahan data."
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact untuk Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy ke GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
